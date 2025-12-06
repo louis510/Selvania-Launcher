@@ -1,53 +1,17 @@
-# module du helios launcher
 name: Launcher Build
 on:
   push:
     branches: [ master ]
 
 jobs:
-  create-release:
+  build-and-release:
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Get version
-        run: echo "version=$(jq -r .version package.json)" >> $GITHUB_ENV
-
-      - name: Check if release exists
-        id: check_release
-        run: |
-          exists=$(gh release view ${{ env.version }} --repo $GITHUB_REPOSITORY --json tagName --jq '.tagName? // empty')
-          echo "exists=$exists" >> $GITHUB_ENV
-
-      - name: Create Release
-        if: ${{ env.exists == '' }}
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.version }}
-          release_name: release ${{ env.version }}
-          draft: false
-          prerelease: ${{ contains(env.version, 'beta') || contains(env.version, 'alpha') }}
-
-      - name: Set upload_url for existing release
-        if: ${{ env.exists != '' }}
-        run: echo "upload_url=https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/$(gh release view ${{ env.version }} --json id --jq '.id')/assets{?name,label}" >> $GITHUB_ENV
-
-  build-launcher:
-    needs: create-release
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [macos-14, ubuntu-latest, windows-latest]
 
     steps:
-      - name: Check out Git repository
+      - name: Checkout
         uses: actions/checkout@v2
 
       - name: Set up Node
@@ -63,33 +27,27 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Get version
+        id: version
+        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+
       - name: Build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build
 
-      - name: Upload built files
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}
-          path: dist/
+      - name: Install GitHub CLI
+        run: sudo apt update && sudo apt install -y gh
 
-  upload-assets:
-    needs: [create-release, build-launcher]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Upload each file to release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ env.upload_url }}
-          asset_path: artifacts
-          asset_name: SelvaniaLauncher-${{ github.sha }}.zip
-          asset_content_type: application/zip
+      - name: Create or get release
+        id: release
+        run: |
+          # Check if release exists
+          RELEASE_ID=$(gh release view ${{ env.VERSION }} --repo $GITHUB_REPOSITORY --json id --jq '.id' || echo "")
+          if [ -z "$RELEASE_ID" ]; then
+            echo "Release does not exist, creating..."
+            gh release create ${{ env.VERSION }} dist/* --repo $GITHUB_REPOSITORY --title "release ${{ env.VERSION }}" --notes "Auto release"
+          else
+            echo "Release exists, uploading assets..."
+            for file in dist/*; do
+              gh release upload ${{ env.VERSION }} "$file" --repo $GITHUB_REPOSITORY --clobber
+            done
+          fi
