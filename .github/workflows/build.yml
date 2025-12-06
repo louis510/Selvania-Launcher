@@ -4,7 +4,7 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -52,10 +52,10 @@ jobs:
             fi
         shell: bash
 
-      - name: Create Release & Upload Asset
+      - name: Create / Update Release & Upload Asset
         uses: ncipollo/release-action@v1
         with:
-          tag: ${{ github.sha }}
+          tag: release-${{ github.sha }}
           name: Release ${{ github.sha }}
           artifacts: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
           draft: false
