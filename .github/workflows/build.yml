@@ -5,25 +5,26 @@ on:
 
 env:
   RELEASE_TAG: v6.0.0
-  ZIP_NAME: SelvaniaLauncher-${GITHUB_SHA}.zip
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     outputs:
-      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Create release 6.0.0
+      - name: Create draft release 6.0.0
         id: create_release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.RELEASE_TAG }}
           name: Release ${{ env.RELEASE_TAG }}
           draft: true
-          prerelease: false
+
+      - name: Set upload_url
+        run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
 
   build-matrix:
     needs: create-release
@@ -56,15 +57,17 @@ jobs:
         run: |
           mkdir -p dist_zip
           if [ "$RUNNER_OS" == "Windows" ]; then
-            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip/${{ env.ZIP_NAME }}
+            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
           else
-            zip -r dist_zip/${{ env.ZIP_NAME }} dist/*
+            zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
           fi
 
-      - name: Upload build to release
-        uses: ncipollo/release-action@v1
+      - name: Upload asset to release
+        uses: actions/upload-release-asset@v1
         with:
-          tag: ${{ env.RELEASE_TAG }}
-          name: ${{ env.ZIP_NAME }}
-          artifacts: dist_zip/${{ env.ZIP_NAME }}
-          draft: true
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
+          asset_name: SelvaniaLauncher-${{ matrix.os }}-${GITHUB_SHA}.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
