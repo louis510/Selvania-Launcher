@@ -3,8 +3,30 @@ on:
   push:
     branches: [ master ]
 
+env:
+  RELEASE_TAG: v6.0.0
+  ZIP_NAME: SelvaniaLauncher-${GITHUB_SHA}.zip
+
 jobs:
-  build:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Create release 6.0.0
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          name: Release ${{ env.RELEASE_TAG }}
+          draft: true
+          prerelease: false
+
+  build-matrix:
+    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,18 +54,17 @@ jobs:
 
       - name: Zip build
         run: |
+          mkdir -p dist_zip
           if [ "$RUNNER_OS" == "Windows" ]; then
-            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip\SelvaniaLauncher-${GITHUB_SHA}.zip
+            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip/${{ env.ZIP_NAME }}
           else
-            mkdir -p dist_zip
-            zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
+            zip -r dist_zip/${{ env.ZIP_NAME }} dist/*
           fi
 
-      - name: Create release & upload asset
+      - name: Upload build to release
         uses: ncipollo/release-action@v1
         with:
-          tag: release-${{ github.sha }}
-          name: Release ${{ github.sha }}
-          artifacts: dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
-          draft: false
-          prerelease: false
+          tag: ${{ env.RELEASE_TAG }}
+          name: ${{ env.ZIP_NAME }}
+          artifacts: dist_zip/${{ env.ZIP_NAME }}
+          draft: true
