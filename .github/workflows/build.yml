@@ -16,8 +16,15 @@ jobs:
 
       - name: Get version
         run: echo "version=$(jq -r .version package.json)" >> $GITHUB_ENV
-      
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          exists=$(gh release view ${{ env.version }} --repo $GITHUB_REPOSITORY --json tagName --jq '.tagName? // empty')
+          echo "exists=$exists" >> $GITHUB_ENV
+
       - name: Create Release
+        if: ${{ env.exists == '' }}
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -28,6 +35,10 @@ jobs:
           draft: false
           prerelease: ${{ contains(env.version, 'beta') || contains(env.version, 'alpha') }}
 
+      - name: Set upload_url for existing release
+        if: ${{ env.exists != '' }}
+        run: echo "upload_url=https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/$(gh release view ${{ env.version }} --json id --jq '.id')/assets{?name,label}" >> $GITHUB_ENV
+
   build-launcher:
     needs: create-release
     runs-on: ${{ matrix.os }}
@@ -37,7 +48,7 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
 
       - name: Set up Node
         uses: actions/setup-node@v3
@@ -58,7 +69,7 @@ jobs:
         run: npm run build
 
       - name: Upload built files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
           path: dist/
@@ -69,7 +80,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -78,7 +89,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          upload_url: ${{ env.upload_url }}
           asset_path: artifacts
           asset_name: SelvaniaLauncher-${{ github.sha }}.zip
           asset_content_type: application/zip
