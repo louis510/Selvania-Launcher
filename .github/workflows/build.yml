@@ -9,7 +9,9 @@ permissions:
   releases: write
 
 env:
-  ZIP_NAME: SelvaniaLauncher-${{ github.sha }}.zip
+  NODE_VERSION: 18.x
+  PYTHON_VERSION: 3.x
+  ZIP_PREFIX: SelvaniaLauncher-${{ github.sha }}
 
 jobs:
   create-release:
@@ -18,7 +20,7 @@ jobs:
       upload_url: ${{ steps.set_upload_url.outputs.upload_url }}
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Get version
@@ -71,15 +73,21 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
-          node-version: 18.x
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.x
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
 
       - name: Build project
         run: npm run build
@@ -87,13 +95,16 @@ jobs:
       - name: Zip build
         run: |
           mkdir -p dist_zip
-          zip -r dist_zip/${{ env.ZIP_NAME }} dist/*
+          ZIP_NAME="${{ env.ZIP_PREFIX }}-${{ matrix.os }}.zip"
+          zip -r dist_zip/$ZIP_NAME dist/*
+          # Générer checksum
+          sha256sum dist_zip/$ZIP_NAME > dist_zip/$ZIP_NAME.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.os }}
-          path: dist_zip/${{ env.ZIP_NAME }}
+          path: dist_zip/
 
   upload-assets:
     needs: [create-release, build-launcher]
@@ -105,20 +116,19 @@ jobs:
         with:
           path: artifacts
 
-      - name: Upload each file to release
+      - name: Upload files to release
         uses: actions/upload-release-asset@v1
         env:
           GH_TOKEN: ${{ secrets.MY_PAT }}
         with:
           upload_url: ${{ env.upload_url }}
-          asset_path: artifacts/${{ env.ZIP_NAME }}
-          asset_name: ${{ env.ZIP_NAME }}
+          asset_path: artifacts/
+          asset_name: ${{ env.ZIP_PREFIX }}.zip
           asset_content_type: application/zip
 
-  # --- Optionnel: statut de build visible dans GitHub ---
   notify-status:
     needs: [upload-assets]
     runs-on: ubuntu-latest
     steps:
       - name: Notify success
-        run: echo "✅ Build and release completed successfully!"
+        run: echo "✅ Build & release completed successfully!"
