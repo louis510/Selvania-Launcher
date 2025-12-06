@@ -1,58 +1,66 @@
-name: Selvania Launcher Build & Release
+name: Selvania Launcher Build
 on:
   push:
     branches: [ master ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-14]
 
-      - name: Set up Node
+    steps:
+      # --- 1️⃣ Checkout ---
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # --- 2️⃣ Setup Node ---
+      - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: 18.x
 
+      # --- 3️⃣ Setup Python ---
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      # --- 4️⃣ Install dependencies ---
       - name: Install dependencies
         run: npm ci
+        shell: bash
 
+      # --- 5️⃣ Build project ---
       - name: Build
         run: npm run build
+        shell: bash
 
+      # --- 6️⃣ Zip the build (multi-OS) ---
       - name: Zip build
         run: |
           mkdir -p dist_zip
-          zip -r dist_zip/SelvaniaLauncher-${{ github.sha }}.zip dist/*
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
+          else
+            zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
+          fi
+        shell: bash
 
-      - name: Upload build artifact
+      # --- 7️⃣ Upload build as artifact (optionnel) ---
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build
+          name: SelvaniaLauncher-${{ github.sha }}
           path: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Create GitHub Release
-        id: create_release
+      # --- 8️⃣ Create or update GitHub release ---
+      - name: Create Release & Upload Asset
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.sha }}
-          name: Release ${{ github.sha }}
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Upload asset to release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/SelvaniaLauncher-${{ github.sha }}.zip
-          asset_name: SelvaniaLauncher-${{ github.sha }}.zip
-          asset_content_type: application/zip
+          name: Selvania Launcher ${{ github.sha }}
+          files: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
+          draft: false
+          prerelease: false
