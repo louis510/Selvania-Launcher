@@ -54,13 +54,15 @@ jobs:
         run: npm run build
 
       - name: Zip build
-        run: |
-          mkdir -p dist_zip
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
-          else
-            zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
-          fi
+  run: |
+    mkdir -p dist_zip
+    if [[ "$RUNNER_OS" == "Linux" || "$RUNNER_OS" == "macOS" ]]; then
+      zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
+    elif [[ "$RUNNER_OS" == "Windows" ]]; then
+      powershell -Command "Compress-Archive -Path dist\* -DestinationPath dist_zip\SelvaniaLauncher-${GITHUB_SHA}.zip"
+    fi
+  shell: bash
+
 
       - name: Upload asset to release
         uses: actions/upload-release-asset@v1
