@@ -1,41 +1,19 @@
-# module du helios launcher
-name: Launcher Build
+# .github/workflows/build-release.yml
+name: Selvania Launcher Build & Release
 on:
   push:
     branches: [ master ]
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Get version
-        run: echo "version=$(jq -r .version package.json)" >> $GITHUB_ENV
-      
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.version }}
-          release_name: release ${{ env.version }}
-          draft: false
-          prerelease: ${{ contains(env.version, 'beta') || contains(env.version, 'alpha') }}
-
-  build-launcher:
-    needs: create-release
+  build:
     runs-on: ${{ matrix.os }}
-
     strategy:
       matrix:
-        os: [macos-14, ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-14]
 
     steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v1
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up Node
         uses: actions/setup-node@v3
@@ -47,22 +25,48 @@ jobs:
         with:
           python-version: 3.x
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
-        shell: bash
 
-      - name: Build
-        env:
-          GH_TOKEN: ${{ secrets.github_token }}
+      - name: Build project
         run: npm run build
-        shell: bash
 
-      - name: Upload build to release
+      - name: Zip build
+        run: |
+          mkdir -p dist_zip
+          zip -r dist_zip/SelvaniaLauncher-${{ github.sha }}.zip dist/*
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.sha }}
+          name: Release ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload assets to release
         uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/
+          asset_path: artifacts/SelvaniaLauncher-${{ github.sha }}.zip
           asset_name: SelvaniaLauncher-${{ github.sha }}.zip
           asset_content_type: application/zip
