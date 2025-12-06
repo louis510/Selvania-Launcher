@@ -3,71 +3,69 @@ on:
   push:
     branches: [ master ]
 
-env:
-  ZIP_NAME: SelvaniaLauncher-${{ github.sha }}.zip
-
 jobs:
-  # --- Crée la release (indépendante) ---
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Get version
-        run: echo "version=$(jq -r .version package.json)" >> $GITHUB_ENV
-      - name: Create Release
-        id: create_release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ env.version }}
-          name: Release ${{ env.version }}
-          draft: false
-          prerelease: ${{ contains(env.version, 'beta') || contains(env.version, 'alpha') }}
-
-  # --- Build multi-OS (indépendant, continue même si erreur) ---
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-14, ubuntu-latest, windows-latest]
-    continue-on-error: true
+        os: [ubuntu-latest, macos-14, windows-latest]
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      # 1️⃣ Checkout du repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2️⃣ Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
           node-version: 18.x
-      - uses: actions/setup-python@v4
+
+      # 3️⃣ Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
           python-version: 3.x
-      - name: Install Dependencies
-        run: npm ci
-      - name: Build
-        run: npm run build
-      - name: Zip Build
-        run: |
-          mkdir -p dist_zip
-          if [ -d "dist" ]; then
-            zip -r dist_zip/${{ env.ZIP_NAME }} dist/*
-          fi
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.os }}
-          path: dist_zip/${{ env.ZIP_NAME }}
 
-  # --- Upload assets vers la release (après tous les builds) ---
-  upload-assets:
-    needs: [create-release]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
+      # 4️⃣ Installer les dépendances
+      - name: Install dependencies
+        run: npm ci
+        shell: bash
+
+      # 5️⃣ Build le projet
+      - name: Build project
+        run: npm run build
+        shell: bash
+
+      # 6️⃣ Créer le dossier dist_zip et zipper les fichiers
+      - name: Zip build
+        run: |
+          if [[ -d "dist" ]]; then
+            mkdir -p dist_zip
+            zip -r dist_zip/SelvaniaLauncher-${{ github.sha }}.zip dist/*
+          else
+            echo "Le dossier dist n'existe pas !"
+            exit 1
+          fi
+        shell: bash
+        # Pour Windows, utiliser PowerShell
+        if: runner.os == 'Windows'
+        run: |
+          if (Test-Path dist) {
+            New-Item -ItemType Directory -Path dist_zip -Force
+            Compress-Archive -Path dist\* -DestinationPath dist_zip\SelvaniaLauncher-${{ github.sha }}.zip
+          } else {
+            Write-Error "Le dossier dist n'existe pas !"
+            exit 1
+          }
+        shell: pwsh
+
+      # 7️⃣ Release et upload de l’artefact
+      - name: Create Release & Upload Asset
+        uses: ncipollo/release-action@v1
         with:
-          path: artifacts
-      - name: Upload to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts
-          asset_name: ${{ env.ZIP_NAME }}
-          asset_content_type: application/zip
+          tag: ${{ github.sha }}
+          name: Release ${{ github.sha }}
+          artifacts: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
+          draft: false
+          prerelease: false
