@@ -4,15 +4,15 @@ on:
     branches: [ master ]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -26,37 +26,24 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        shell: bash
 
       - name: Build project
         run: npm run build
-        shell: bash
 
       - name: Zip build
         run: |
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            if (Test-Path dist) {
-              New-Item -ItemType Directory -Path dist_zip -Force
-              Compress-Archive -Path dist\* -DestinationPath dist_zip\SelvaniaLauncher-${GITHUB_SHA}.zip
-            } else {
-              Write-Error "Le dossier dist n'existe pas !"
-              exit 1
-            }
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            powershell Compress-Archive -Path dist\* -DestinationPath dist_zip\SelvaniaLauncher-${GITHUB_SHA}.zip
           else
-            if [[ -d "dist" ]]; then
-              mkdir -p dist_zip
-              zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
-            else
-              echo "Le dossier dist n'existe pas !"
-              exit 1
-            fi
-        shell: bash
+            mkdir -p dist_zip
+            zip -r dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip dist/*
+          fi
 
-      - name: Create / Update Release & Upload Asset
+      - name: Create release & upload asset
         uses: ncipollo/release-action@v1
         with:
           tag: release-${{ github.sha }}
           name: Release ${{ github.sha }}
-          artifacts: dist_zip/SelvaniaLauncher-${{ github.sha }}.zip
+          artifacts: dist_zip/SelvaniaLauncher-${GITHUB_SHA}.zip
           draft: false
           prerelease: false
